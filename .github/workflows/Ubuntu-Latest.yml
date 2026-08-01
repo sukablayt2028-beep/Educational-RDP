@@ -6,7 +6,7 @@ on:
 jobs:
   setup-rdp:
     runs-on: ubuntu-latest
-    timeout-minutes: 360  # 6 hours max
+    timeout-minutes: 360
     
     steps:
       - name: Install Desktop Environment
@@ -17,8 +17,10 @@ jobs:
       - name: Configure RDP
         run: |
           sudo systemctl enable xrdp
-          sudo adduser github-runner sudo
-          echo "github-runner:password123" | sudo chpasswd
+          sudo systemctl start xrdp
+          # The actual user is 'runner', not 'github-runner'
+          echo "runner:YourPassword123" | sudo chpasswd
+          sudo usermod -aG sudo runner
           
       - name: Install Tailscale
         run: |
@@ -26,12 +28,17 @@ jobs:
           
       - name: Connect to Tailscale
         run: |
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }}
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=github-actions-rdp
           
-      - name: Get Tailscale IP
+      - name: Display Connection Info
         run: |
+          echo "=========================================="
           echo "Tailscale IP: $(tailscale ip -4)"
+          echo "Username: runner"
+          echo "Password: YourPassword123"
+          echo "=========================================="
           
-      - name: Keep alive
+      - name: Keep workflow alive
         run: |
-          sleep 21600  # 6 hours
+          echo "VM will remain active for 6 hours (GitHub's max)"
+          sleep 21600
