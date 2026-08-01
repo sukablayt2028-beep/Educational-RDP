@@ -1,0 +1,37 @@
+name: RDP Setup (Educational - Do Not Use)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup-rdp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6 hours max
+    
+    steps:
+      - name: Install Desktop Environment
+        run: |
+          sudo apt update
+          sudo apt install -y xfce4 xfce4-goodies xrdp
+          
+      - name: Configure RDP
+        run: |
+          sudo systemctl enable xrdp
+          sudo adduser github-runner sudo
+          echo "github-runner:password123" | sudo chpasswd
+          
+      - name: Install Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+          
+      - name: Connect to Tailscale
+        run: |
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }}
+          
+      - name: Get Tailscale IP
+        run: |
+          echo "Tailscale IP: $(tailscale ip -4)"
+          
+      - name: Keep alive
+        run: |
+          sleep 21600  # 6 hours
