@@ -34,8 +34,8 @@ jobs:
             sudo cp ~/.apt-cache/*.deb /var/cache/apt/archives/ 2>/dev/null || true
           fi
 
-          sudo apt update -qq
-          sudo apt install -y \
+          sudo apt-get update -qq
+          sudo apt-get install -y \
             xfce4 xfce4-goodies xrdp \
             firefox \
             nano vim curl wget git \
@@ -43,7 +43,10 @@ jobs:
             fonts-noto \
             pulseaudio \
             pulseaudio-utils \
-            xrdp-pulseaudio-installer
+            libpulse-dev \
+            build-essential \
+            dpkg-dev \
+            autoconf automake libtool
 
           mkdir -p ~/.apt-cache
           cp /var/cache/apt/archives/*.deb ~/.apt-cache/ 2>/dev/null || true
@@ -58,9 +61,18 @@ jobs:
           sudo sed -i 's/allowed_users=console/allowed_users=anybody/' /etc/X11/Xwrapper.config || true
 
           # Sound setup
-          sudo /usr/libexec/xrdp/install_pulse || true
           sudo adduser xrdp ssl-cert || true
           mkdir -p ~/.config/pulse
+
+          # Build and install xrdp pulse module from source
+          git clone https://github.com/neutrinolabs/pulseaudio-module-xrdp.git /tmp/pulse-xrdp
+          cd /tmp/pulse-xrdp
+          ./bootstrap
+          ./configure PULSE_DIR=$(pkg-config --variable=prefix libpulse)
+          make
+          sudo make install
+
+          # Configure pulse
           cat > ~/.config/pulse/default.pa << 'EOF'
           .include /etc/pulse/default.pa
           load-module module-xrdp-sink
