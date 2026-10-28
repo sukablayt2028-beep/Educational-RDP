@@ -34,7 +34,10 @@ jobs:
             sudo cp ~/.apt-cache/*.deb /var/cache/apt/archives/ 2>/dev/null || true
           fi
 
+          # Enable source packages
+          sudo sed -i 's/^# deb-src/deb-src/' /etc/apt/sources.list
           sudo apt-get update -qq
+
           sudo apt-get install -y \
             xfce4 xfce4-goodies xrdp \
             firefox \
@@ -44,9 +47,11 @@ jobs:
             pulseaudio \
             pulseaudio-utils \
             libpulse-dev \
+            libpulse0 \
             build-essential \
             dpkg-dev \
-            autoconf automake libtool
+            autoconf automake libtool \
+            pkg-config
 
           mkdir -p ~/.apt-cache
           cp /var/cache/apt/archives/*.deb ~/.apt-cache/ 2>/dev/null || true
@@ -64,11 +69,18 @@ jobs:
           sudo adduser xrdp ssl-cert || true
           mkdir -p ~/.config/pulse
 
+          # Get pulseaudio source matching installed version
+          cd /tmp
+          PA_VER=$(pulseaudio --version | awk '{print $2}')
+          sudo apt-get source pulseaudio=$PA_VER || sudo apt-get source pulseaudio
+          PA_SRC=$(find /tmp -maxdepth 1 -type d -name "pulseaudio-*" | head -1)
+          echo "PulseAudio source dir: $PA_SRC"
+
           # Build and install xrdp pulse module from source
           git clone https://github.com/neutrinolabs/pulseaudio-module-xrdp.git /tmp/pulse-xrdp
           cd /tmp/pulse-xrdp
           ./bootstrap
-          ./configure PULSE_DIR=$(pkg-config --variable=prefix libpulse)
+          ./configure PULSE_DIR=$(realpath $PA_SRC)
           make
           sudo make install
 
