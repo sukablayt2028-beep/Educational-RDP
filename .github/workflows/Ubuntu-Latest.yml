@@ -30,7 +30,6 @@ jobs:
 
       - name: Install Desktop Environment & Tools
         run: |
-          # Restore cached debs if available
           if [ -d ~/.apt-cache ]; then
             sudo cp ~/.apt-cache/*.deb /var/cache/apt/archives/ 2>/dev/null || true
           fi
@@ -41,9 +40,11 @@ jobs:
             firefox \
             nano vim curl wget git \
             htop neofetch \
-            fonts-noto
+            fonts-noto \
+            pulseaudio \
+            pulseaudio-utils \
+            xrdp-pulseaudio-installer
 
-          # Save debs to cache dir for next run
           mkdir -p ~/.apt-cache
           cp /var/cache/apt/archives/*.deb ~/.apt-cache/ 2>/dev/null || true
 
@@ -56,7 +57,18 @@ jobs:
           echo "startxfce4" > ~/.xsession
           sudo sed -i 's/allowed_users=console/allowed_users=anybody/' /etc/X11/Xwrapper.config || true
 
-      - name: Install Tailscale
+          # Sound setup
+          sudo /usr/libexec/xrdp/install_pulse || true
+          sudo adduser xrdp ssl-cert || true
+          mkdir -p ~/.config/pulse
+          cat > ~/.config/pulse/default.pa << 'EOF'
+          .include /etc/pulse/default.pa
+          load-module module-xrdp-sink
+          load-module module-xrdp-source
+          EOF
+          pulseaudio --start || true
+
+      - name: Cache Tailscale
         id: cache-tailscale
         uses: actions/cache@v4
         with:
@@ -80,6 +92,8 @@ jobs:
           sudo systemctl status xrdp --no-pager
           echo "--- Tailscale Status ---"
           tailscale status
+          echo "--- PulseAudio Status ---"
+          pulseaudio --check && echo "PulseAudio running" || echo "PulseAudio not running"
 
       - name: Display Connection Info
         run: |
@@ -88,6 +102,7 @@ jobs:
           echo "  Username     : runner"
           echo "  Password     : (from RDP_PASSWORD secret)"
           echo "  RDP Port     : 3389"
+          echo "  Audio        : Enabled (set RDP client to 'Play on this computer')"
           echo "  Session ends : $(date -d '+${{ github.event.inputs.duration }} seconds')"
           echo "=========================================="
 
