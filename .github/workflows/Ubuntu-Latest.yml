@@ -1,44 +1,74 @@
-name: RDP Setup (Educational - Do Not Use)
+name: RDP Setup (Educational)
 
 on:
   workflow_dispatch:
+    inputs:
+      duration:
+        description: 'Session duration in seconds (max 21600)'
+        required: false
+        default: '21600'
 
 jobs:
   setup-rdp:
     runs-on: ubuntu-latest
     timeout-minutes: 360
-    
+
     steps:
-      - name: Install Desktop Environment
+      - name: Install Desktop Environment & Tools
         run: |
-          sudo apt update
-          sudo apt install -y xfce4 xfce4-goodies xrdp
-          
+          sudo apt update -qq
+          sudo apt install -y \
+            xfce4 xfce4-goodies xrdp \
+            firefox \
+            nano vim curl wget git \
+            htop neofetch \
+            fonts-noto
+
       - name: Configure RDP
         run: |
           sudo systemctl enable xrdp
           sudo systemctl start xrdp
-          # The actual user is 'runner', not 'github-runner'
-          echo "runner:YourPassword123" | sudo chpasswd
+          echo "runner:${{ secrets.RDP_PASSWORD }}" | sudo chpasswd
           sudo usermod -aG sudo runner
-          
+          # Fix black screen issue on connect
+          echo "startxfce4" > ~/.xsession
+          sudo sed -i 's/allowed_users=console/allowed_users=anybody/' /etc/X11/Xwrapper.config || true
+
       - name: Install Tailscale
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
-          
+
       - name: Connect to Tailscale
         run: |
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=github-actions-rdp
-          
+          sudo tailscale up \
+            --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} \
+            --hostname=github-rdp-${{ github.run_id }}
+
+      - name: Verify Services
+        run: |
+          echo "--- RDP Status ---"
+          sudo systemctl status xrdp --no-pager
+          echo "--- Tailscale Status ---"
+          tailscale status
+
       - name: Display Connection Info
         run: |
           echo "=========================================="
-          echo "Tailscale IP: $(tailscale ip -4)"
-          echo "Username: runner"
-          echo "Password: YourPassword123"
+          echo "  Tailscale IP : $(tailscale ip -4)"
+          echo "  Username     : runner"
+          echo "  Password     : (from RDP_PASSWORD secret)"
+          echo "  RDP Port     : 3389"
+          echo "  Session ends : $(date -d '+${{ github.event.inputs.duration }} seconds')"
           echo "=========================================="
-          
-      - name: Keep workflow alive
+
+      - name: Keep Alive (with periodic status)
         run: |
-          echo "VM will remain active for 6 hours (GitHub's max)"
-          sleep 21600
+          DURATION=${{ github.event.inputs.duration }}
+          ELAPSED=0
+          INTERVAL=1800  # ping every 30 min
+          while [ $ELAPSED -lt $DURATION ]; do
+            SLEEP=$((DURATION - ELAPSED < INTERVAL ? DURATION - ELAPSED : INTERVAL))
+            sleep $SLEEP
+            ELAPSED=$((ELAPSED + SLEEP))
+            echo "[$(date)] Session alive — ${ELAPSED}s elapsed / ${DURATION}s total"
+          done
