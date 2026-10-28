@@ -14,8 +14,27 @@ jobs:
     timeout-minutes: 360
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache APT packages
+        id: cache-apt
+        uses: actions/cache@v4
+        with:
+          path: |
+            /var/cache/apt/archives
+            ~/.apt-cache
+          key: apt-rdp-${{ runner.os }}-${{ hashFiles('.github/workflows/rdp.yml') }}
+          restore-keys: |
+            apt-rdp-${{ runner.os }}-
+
       - name: Install Desktop Environment & Tools
         run: |
+          # Restore cached debs if available
+          if [ -d ~/.apt-cache ]; then
+            sudo cp ~/.apt-cache/*.deb /var/cache/apt/archives/ 2>/dev/null || true
+          fi
+
           sudo apt update -qq
           sudo apt install -y \
             xfce4 xfce4-goodies xrdp \
@@ -24,17 +43,28 @@ jobs:
             htop neofetch \
             fonts-noto
 
+          # Save debs to cache dir for next run
+          mkdir -p ~/.apt-cache
+          cp /var/cache/apt/archives/*.deb ~/.apt-cache/ 2>/dev/null || true
+
       - name: Configure RDP
         run: |
           sudo systemctl enable xrdp
           sudo systemctl start xrdp
           echo "runner:${{ secrets.RDP_PASSWORD }}" | sudo chpasswd
           sudo usermod -aG sudo runner
-          # Fix black screen issue on connect
           echo "startxfce4" > ~/.xsession
           sudo sed -i 's/allowed_users=console/allowed_users=anybody/' /etc/X11/Xwrapper.config || true
 
       - name: Install Tailscale
+        id: cache-tailscale
+        uses: actions/cache@v4
+        with:
+          path: /usr/bin/tailscale
+          key: tailscale-${{ runner.os }}
+
+      - name: Install Tailscale (if not cached)
+        if: steps.cache-tailscale.outputs.cache-hit != 'true'
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
 
@@ -65,7 +95,7 @@ jobs:
         run: |
           DURATION=${{ github.event.inputs.duration }}
           ELAPSED=0
-          INTERVAL=1800  # ping every 30 min
+          INTERVAL=1800
           while [ $ELAPSED -lt $DURATION ]; do
             SLEEP=$((DURATION - ELAPSED < INTERVAL ? DURATION - ELAPSED : INTERVAL))
             sleep $SLEEP
